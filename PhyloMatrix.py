@@ -39,13 +39,14 @@ class PhyloMatrix(object):
             min_taxa = 0
         exclude = []
         for c in PhyloMatrix.matrix.columns:
-            if np.count_nonzero(PhyloMatrix.matrix[c]) < minimum_taxa: exclude.append(c)
+            if np.count_nonzero(PhyloMatrix.matrix[c]) < min_taxa: exclude.append(c)
         PhyloMatrix.matrix = PhyloMatrix.matrix.drop(exclude, axis=1)
     
     def PCA(self):
         if not PhyloMatrix.matrix:
             raise ValueError("No matrix found: Run GenerateMatrix()")
         PhyloMatrix.pca = PCA(PhyloMatrix.matrix,standardize=True)
+        
     
     #def PCFilter
     
