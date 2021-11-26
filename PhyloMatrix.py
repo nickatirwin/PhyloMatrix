@@ -105,7 +105,7 @@ class PhyloMatrix(object):
         # select number of PCs to use: to 80% of variance explained
         if not PC:
             PC = 1
-            while sum(phylo.pca.eigenvals[0:PC])/sum(phylo.pca.eigenvals) < 0.8:
+            while sum(PhyloMatrix.pca.eigenvals[0:PC])/sum(PhyloMatrix.pca.eigenvals) < 0.8:
                 PC += 1
         PhyloMatrix.scale_matrix = pd.DataFrame(StandardScaler().fit_transform(PhyloMatrix.matrix), index=PhyloMatrix.matrix.index, columns=PhyloMatrix.matrix.columns)
         # run multiple regressions
