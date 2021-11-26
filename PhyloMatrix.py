@@ -106,7 +106,8 @@ class PhyloMatrix(object):
     def Regression(self, a = 0.05, PC=5, remove_influentials=True):
         PhyloMatrix.scale_matrix = pd.DataFrame(StandardScaler().fit_transform(PhyloMatrix.matrix), index=PhyloMatrix.matrix.index, columns=PhyloMatrix.matrix.columns)
         # run multiple regressions
-        coefficients, pvalues, results, data = {}, {}, {}, {}
+        PhyloMatrix.regression_coefficients = {}
+        PhyloMatrix.regression_pvalues = {}
         m = 0
         for cl in PhyloMatrix.matrix.columns:
             m += 1
@@ -134,13 +135,24 @@ class PhyloMatrix(object):
                 except: # if the filtered results have perfect seperation, take previous analysis
                     result = sm.GLM(PhyloMatrix.y, X.drop(['dffits','y'],axis=1)).fit(cov='HC1')
             # record results
-            data[cl] = X
-            results[cl] = result
-            coefficients[cl] = result.params[cl]
-            pvalues[cl] = result.pvalues[cl]
+            PhyloMatrix.regression_coefficients[cl] = result.params[cl]
+            PhyloMatrix.regression_pvalues[cl] = result.pvalues[cl]
         # return results
         a = a/len(PhyloMatrix.matrix.columns) # bonferonni correction
-        regression_hits = [c for c in PhyloMatrix.matrix.columns if pvalues[c] < a]
+        regression_hits = [c for c in PhyloMatrix.matrix.columns if PhyloMatrix.regression_pvalues[c] < a]
         PhyloMatrix.regression_hits = pd.DataFrame(PhyloMatrix.matrix[regression_hits])
-        PhyloMatrix.regression_hits.loc['coeff'] = [coefficients[c] for c in regression_hits]
-        PhyloMatrix.regression_hits.loc['pvalue'] = [pvalues[c] for c in regression_hits]
+        PhyloMatrix.regression_hits.loc['coeff'] = [PhyloMatrix.regression_coefficients[c] for c in regression_hits]
+        PhyloMatrix.regression_hits.loc['pvalue'] = [PhyloMatrix.regression_pvalues[c] for c in regression_hits]
+    
+    # plot results
+    def RegressionPlot(self, a=0.05):
+        a = a/len(PhyloMatrix.matrix.columns)
+        unsig_p = [PhyloMatrix.regression_pvalues[p] for p in PhyloMatrix.regression_pvalues if PhyloMatrix.regression_pvalues[p] > a]
+        unsig_c = [PhyloMatrix.regression_coefficients[p] for p in PhyloMatrix.regression_pvalues if PhyloMatrix.regression_pvalues[p] > a]
+        sig_p = [PhyloMatrix.regression_pvalues[p] for p in PhyloMatrix.regression_pvalues if PhyloMatrix.regression_pvalues[p] < a]
+        sig_c = [PhyloMatrix.regression_coefficients[p] for p in PhyloMatrix.regression_pvalues if PhyloMatrix.regression_pvalues[p] < a]
+        plt.scatter(y=-1*(np.log10(unsig_p)),x=unsig_c,alpha=0.5)
+        plt.scatter(y=-1*(np.log10(sig_p)),x=sig_c,alpha=0.5)
+        plt.ylabel('-Log10(p value)')
+        plt.xlabel('Coefficient')
+        plt.show()
