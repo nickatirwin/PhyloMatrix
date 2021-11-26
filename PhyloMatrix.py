@@ -2,7 +2,7 @@
 # 1. Compatibility for different orthogroup inputs?
 # 2. Adjust PCA plot so that you can map different taxonomic groups
 
-
+import sys
 import pandas as pd
 import numpy as np
 from statsmodels.multivariate.pca import PCA
@@ -10,6 +10,7 @@ import statsmodels.api as sm
 import matplotlib.pyplot as plt
 from collections import Counter
 from ete4 import NCBITaxa
+from sklearn.preprocessing import StandardScaler
 
 class PhyloMatrix(object):
     def __init__(self, cluster_file=None):
@@ -86,8 +87,60 @@ class PhyloMatrix(object):
         # plot
         plt.show()
     
-    #def AssignDependentVariable    
-            
+    def DependentVariable(self,dv=None,delim='\t',header=False):
+        if not dv:
+            raise ValueError('Provide a dependent variable file')
+        try:
+            if header == False:
+                dv = open(dv,'r').readlines()
+            else:
+                dv = open(dv,'r').readlines()[1:]
+            dv = {l.split(delim)[0]:int(l.split(delim)[1].strip()) for l in dv}
+        except:
+            raise ValueError("Cannot open dependent variable file: %s" % dv)
+        PhyloMatrix.y = pd.DataFrame([dv[t] for t in PhyloMatrix.matrix.index],index=PhyloMatrix.matrix.index,columns=['y'])
+        
     #def PCFilter
     
     #def Regression
+    def Regression(self, a = 0.05, PC=5, remove_influentials=True):
+        PhyloMatrix.scale_matrix = pd.DataFrame(StandardScaler().fit_transform(PhyloMatrix.matrix), index=PhyloMatrix.matrix.index, columns=PhyloMatrix.matrix.columns)
+        # run multiple regressions
+        coefficients, pvalues, results, data = {}, {}, {}, {}
+        m = 0
+        for cl in PhyloMatrix.matrix.columns:
+            m += 1
+            # progress bar
+            sys.stdout.write('\r')
+            sys.stdout.write(str(m)+'/'+str(len(PhyloMatrix.matrix.columns))+'     ')
+            sys.stdout.flush()
+            ####
+            X = sm.add_constant(pd.concat([PhyloMatrix.scale_matrix[cl],PhyloMatrix.pca.values.iloc[:,:PC]],axis=1))
+            # calculate initial model
+            result = sm.GLM(PhyloMatrix.y, X).fit(cov='HC1')
+            if remove_influentials == True:
+                # identify and remove influential points
+                influence = result.get_influence()
+                n, k = X.shape[0], X.shape[1]
+                cutoff_dffits = 2*(np.sqrt(k/n))
+                X['dffits'] = influence.d_fittedvalues_scaled
+                X['y'] = PhyloMatrix.y
+                X_filt = X.loc[abs(X['dffits']) < cutoff_dffits]
+                y_filt = X_filt['y']
+                X_filt = X_filt.drop(columns=['y','dffits'])
+                # recalculate model
+                try:
+                    result = sm.GLM(y_filt, X_filt).fit(cov='HC1')    
+                except: # if the filtered results have perfect seperation, take previous analysis
+                    result = sm.GLM(PhyloMatrix.y, X.drop(['dffits','y'],axis=1)).fit(cov='HC1')
+            # record results
+            data[cl] = X
+            results[cl] = result
+            coefficients[cl] = result.params[cl]
+            pvalues[cl] = result.pvalues[cl]
+        # return results
+        a = a/len(PhyloMatrix.matrix.columns) # bonferonni correction
+        regression_hits = [c for c in PhyloMatrix.matrix.columns if pvalues[c] < a]
+        PhyloMatrix.regression_hits = pd.DataFrame(PhyloMatrix.matrix[regression_hits])
+        PhyloMatrix.regression_hits.loc['coeff'] = [coefficients[c] for c in regression_hits]
+        PhyloMatrix.regression_hits.loc['pvalue'] = [pvalues[c] for c in regression_hits]
