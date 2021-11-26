@@ -98,12 +98,15 @@ class PhyloMatrix(object):
             dv = {l.split(delim)[0]:int(l.split(delim)[1].strip()) for l in dv}
         except:
             raise ValueError("Cannot open dependent variable file: %s" % dv)
-        PhyloMatrix.y = pd.DataFrame([dv[t] for t in PhyloMatrix.matrix.index],index=PhyloMatrix.matrix.index,columns=['y'])
-        
-    #def PCFilter
+        PhyloMatrix.y = pd.DataFrame([dv[t] for t in PhyloMatrix.matrix.index],index=PhyloMatrix.matrix.index,columns=['y']) 
     
     #def Regression
-    def Regression(self, a = 0.05, PC=5, remove_influentials=True):
+    def Regression(self, a = 0.05, PC=None, remove_influentials=True):
+        # select number of PCs to use: to 80% of variance explained
+        if not PC:
+            PC = 1
+            while sum(phylo.pca.eigenvals[0:PC])/sum(phylo.pca.eigenvals) < 0.8:
+                PC += 1
         PhyloMatrix.scale_matrix = pd.DataFrame(StandardScaler().fit_transform(PhyloMatrix.matrix), index=PhyloMatrix.matrix.index, columns=PhyloMatrix.matrix.columns)
         # run multiple regressions
         PhyloMatrix.regression_coefficients = {}
@@ -143,6 +146,7 @@ class PhyloMatrix(object):
         PhyloMatrix.regression_hits = pd.DataFrame(PhyloMatrix.matrix[regression_hits])
         PhyloMatrix.regression_hits.loc['coeff'] = [PhyloMatrix.regression_coefficients[c] for c in regression_hits]
         PhyloMatrix.regression_hits.loc['pvalue'] = [PhyloMatrix.regression_pvalues[c] for c in regression_hits]
+        PhyloMatrix.regression_hits = PhyloMatrix.regression_hits.sort_values(by ='pvalue', axis=1)
     
     # plot results
     def RegressionPlot(self, a=0.05):
