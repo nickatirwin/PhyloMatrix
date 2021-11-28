@@ -9,8 +9,12 @@ import numpy as np
 from statsmodels.multivariate.pca import PCA
 import statsmodels.api as sm
 import matplotlib.pyplot as plt
+
+import seaborn
+
 import mpld3
 from mpld3 import plugins
+
 from collections import Counter
 from sklearn.preprocessing import StandardScaler
 
@@ -43,7 +47,7 @@ class PhyloMatrix(object):
 
         # check input file type and load    
         if type.lower() == 'mcl': # load in MCL output
-            # record all samples
+            # record all taxa
             taxa = set([t.split('.')[0] for t in PhyloMatrix.cluster_file.split('\t')])
             n = len(PhyloMatrix.cluster_file.split('\n')[:-1])
             taxa_d = {t:[0]*n for t in taxa}
@@ -54,8 +58,27 @@ class PhyloMatrix(object):
                 for t in counts:
                     taxa_d[t][m] = counts[t] 
                 m += 1
-            PhyloMatrix.matrix = pd.DataFrame(taxa_d, index=['C'+(6-len(str(x)))*'0'+str(x) for x in range(1,n+1)]).transpose()    
+            PhyloMatrix.matrix = pd.DataFrame.from_dict(taxa_d, index=['C'+(6-len(str(x)))*'0'+str(x) for x in range(1,n+1)],orient='index')   
         
+        elif type.lower() == 'eggnog': # load in eggnog family members
+            # record all taxa
+            taxa = []
+            for l in PhyloMatrix.cluster_file.split('\n')[:-1]:
+                taxa += [t.split('.')[0] for t in l.split('\t')[4].split(',')]
+            taxa = set(taxa)
+            # make a dictionary
+            n = len(PhyloMatrix.cluster_file.split('\n')[:-1])
+            taxa_d = {t:[0]*n for t in taxa}
+            # count gene frequencies
+            m, family = 0, []
+            for l in PhyloMatrix.cluster_file.split('\n')[:-1]:
+                counts = Counter([t.split('.')[0] for t in l.split('\t')[4].split(',')])
+                for t in counts:
+                    taxa_d[t][m] = counts[t]
+                family.append(l.split('\t')[1])
+                m += 1
+            PhyloMatrix.matrix = pd.DataFrame.from_dict(taxa_d, columns=family,orient='index')  
+
         elif type.lower() == 'table': # load in table as a matrix
             # read in the dataframe using pandas
             PhyloMatrix.matrix = pd.read_table(file,header=header, index_col=0)
@@ -71,11 +94,8 @@ class PhyloMatrix(object):
             if np.count_nonzero(PhyloMatrix.matrix[c]) < min_taxa: exclude.append(c)
         PhyloMatrix.matrix = PhyloMatrix.matrix.drop(exclude, axis=1)
 
-    class Regression(object):
-        def __init__(self):
-            pass
-
-        def PCA(binary=False):
+    class PCA(object):
+        def __init__(self, binary=True, standardize=True, method='eig', normalize=True):
             "Calculate a PCA using the gene matrix"
             # make the dataframe binary
             if binary == True:
@@ -83,10 +103,10 @@ class PhyloMatrix(object):
             else:
                 pca_matrix = PhyloMatrix.matrix.transpose()       
             # run the pca
-            PhyloMatrix.pca = PCA(pca_matrix,standardize=True, method='eig')
+            PhyloMatrix.pca = PCA(pca_matrix,standardize=standardize, method=method, normalize=normalize)
             PhyloMatrix.pca.values = PhyloMatrix.pca.coeff.transpose()
-            
-        def PCAplot(PCx='PC1',PCy='PC2',annotate=False):
+
+        def plot(PCx='PC1',PCy='PC2',annotate=False):
             "Plot for visualizing PCA"
             ncbi = NCBITaxa()
             # check taxonomic groups
@@ -117,6 +137,12 @@ class PhyloMatrix(object):
             # plot
             mpld3.save_html(fig, "pca.html")
             plt.show()
+
+
+    class Regression(object):
+        def __init__(self):
+            pass
+
 
         
         def DependentVariable(dv=None,delim='\t',header=False):
@@ -153,35 +179,38 @@ class PhyloMatrix(object):
                 sys.stdout.write(str(m)+'/'+str(len(PhyloMatrix.matrix.columns))+'     ')
                 sys.stdout.flush()
                 ####
-                X = sm.add_constant(pd.concat([PhyloMatrix.scale_matrix[cl],PhyloMatrix.pca.values.iloc[:,:PC]],axis=1))
-                # calculate initial model
-                result = sm.GLM(PhyloMatrix.y, X).fit(cov='HC1')
-                if remove_influentials == True:
-                    # identify and remove influential points
-                    influence = result.get_influence()
-                    n, k = X.shape[0], X.shape[1]
-                    cutoff_dffits = 2*(np.sqrt(k/n))
-                    X['dffits'] = influence.d_fittedvalues_scaled
-                    X['y'] = PhyloMatrix.y
-                    X_filt = X.loc[abs(X['dffits']) < cutoff_dffits]
-                    y_filt = X_filt['y']
-                    X_filt = X_filt.drop(columns=['y','dffits'])
-                    # recalculate model
-                    try:
-                        result = sm.GLM(y_filt, X_filt).fit(cov='HC1')    
-                    except: # if the filtered results have perfect seperation, take previous analysis
-                        result = sm.GLM(PhyloMatrix.y, X.drop(['dffits','y'],axis=1)).fit(cov='HC1')
-                # record results
-                PhyloMatrix.regression_coefficients[cl] = result.params[cl]
-                PhyloMatrix.regression_pvalues[cl] = result.pvalues[cl]
-                if (PhyloMatrix.regression_coefficients[cl] > 0) and (PhyloMatrix.regression_pvalues[cl] < a):
-                    PhyloMatrix.regression_association[cl] = 'positive'
-                elif (PhyloMatrix.regression_coefficients[cl] < 0) and (PhyloMatrix.regression_pvalues[cl] < a):
-                    PhyloMatrix.regression_association[cl] = 'negative'
-                else:
-                    PhyloMatrix.regression_association[cl] = 'NA'
+                try:
+                    X = sm.add_constant(pd.concat([PhyloMatrix.scale_matrix[cl],PhyloMatrix.pca.values.iloc[:,:PC]],axis=1))
+                    # calculate initial model
+                    result = sm.GLM(PhyloMatrix.y, X).fit(cov='HC1')
+                    if remove_influentials == True:
+                        # identify and remove influential points
+                        influence = result.get_influence()
+                        n, k = X.shape[0], X.shape[1]
+                        cutoff_dffits = 2*(np.sqrt(k/n))
+                        X['dffits'] = influence.d_fittedvalues_scaled
+                        X['y'] = PhyloMatrix.y
+                        X_filt = X.loc[abs(X['dffits']) < cutoff_dffits]
+                        y_filt = X_filt['y']
+                        X_filt = X_filt.drop(columns=['y','dffits'])
+                        # recalculate model
+                        try:
+                            result = sm.GLM(y_filt, X_filt).fit(cov='HC1')    
+                        except: # if the filtered results have perfect seperation, take previous analysis
+                            result = sm.GLM(PhyloMatrix.y, X.drop(['dffits','y'],axis=1)).fit(cov='HC1')
+                    # record results
+                    PhyloMatrix.regression_coefficients[cl] = result.params[cl]
+                    PhyloMatrix.regression_pvalues[cl] = result.pvalues[cl]
+                    if (PhyloMatrix.regression_coefficients[cl] > 0) and (PhyloMatrix.regression_pvalues[cl] < a):
+                        PhyloMatrix.regression_association[cl] = 'positive'
+                    elif (PhyloMatrix.regression_coefficients[cl] < 0) and (PhyloMatrix.regression_pvalues[cl] < a):
+                        PhyloMatrix.regression_association[cl] = 'negative'
+                    else:
+                        PhyloMatrix.regression_association[cl] = 'NA'
+                except:
+                    print('Error perfect correlation: %s'% cl)
             # return results
-            correlated_clusters = {c:[PhyloMatrix.regression_coefficients[c],PhyloMatrix.regression_pvalues[c],PhyloMatrix.regression_association[c]] for c in PhyloMatrix.matrix.columns}
+            correlated_clusters = {c:[PhyloMatrix.regression_coefficients[c],PhyloMatrix.regression_pvalues[c],PhyloMatrix.regression_association[c]] for c in PhyloMatrix.regression_coefficients.keys()}
             PhyloMatrix.regression_hits = correlated_clusters.keys()
             PhyloMatrix.correlated_clusters = pd.DataFrame.from_dict(correlated_clusters,orient='index',columns=['coeff','pvalue','association'])
             # add the regression output to the annotation matrix
@@ -192,6 +221,9 @@ class PhyloMatrix(object):
 
         # plot results
         def RegressionPlot(a=0.05):
+
+            seaborn.relplot(data=PhyloMatrix.correlated_clusters,x='coeff',y=-np.log(PhyloMatrix.correlated_clusters.pvalue),hue='association')
+
             css = """
             table
             {
@@ -260,6 +292,7 @@ class PhyloMatrix(object):
             plugins.connect(fig, tooltip2)
             """
             mpld3.save_html(fig, "regression.html")
+
             plt.show()
 
     class Annotation(object):
@@ -269,10 +302,10 @@ class PhyloMatrix(object):
             annot = open(file,'r').readlines()
             a_d = {a.split('\t')[0]:a.strip().split('\t')[1:] for a in annot[1:]}
             PhyloMatrix.annotation_matrix = pd.DataFrame.from_dict(a_d,orient='index',columns=annot[0].strip().split('\t'))
-        def ParseAnnotations(targets=None,features=None):
+        def Subsample(targets=None,features=None):
             '''provide a list of targets and a list of features - search for the targets in each feature'''
-            if type(targets) == 'str': targets = [targets]
-            if type(features) == 'str': features = [features]
+            if type(targets) == str: targets = [targets]
+            if type(features) == str: features = [features]
             clusters = []
             for feature in features:
                 clusters.append(PhyloMatrix.annotation_matrix.loc[PhyloMatrix.annotation_matrix[feature].isin(targets)].index.to_list())
