@@ -34,7 +34,7 @@ class PhyloMatrix(object):
         PhyloMatrix.annotation_matrix = pd.DataFrame()
     
     # MATRIX PARSER
-    def LoadMatrix(self, type='table', file=None, header=0):
+    def LoadMatrix(self, type='table', file=None, header=0, sep='\t'):
         '''Load a matrix from clusters'''
         # check for input file
         if file:
@@ -81,7 +81,7 @@ class PhyloMatrix(object):
 
         elif type.lower() == 'table': # load in table as a matrix
             # read in the dataframe using pandas
-            PhyloMatrix.matrix = pd.read_table(file,header=header, index_col=0)
+            PhyloMatrix.matrix = pd.read_table(file,header=header, index_col=0, sep=sep)
             # if there are no headers, provide them
             if header != 0:
                 PhyloMatrix.matrix.columns = ['C'+(6-len(str(x)))*'0'+str(x) for x in range(1,len(PhyloMatrix.cluster_file.split('\n')[:-1])+1)]
@@ -298,7 +298,6 @@ class PhyloMatrix(object):
                     print('Error perfect correlation: %s'% cl)
             # return results
             correlated_clusters = {c:[PhyloMatrix.regression_coefficients[c],PhyloMatrix.regression_pvalues[c],PhyloMatrix.regression_association[c]] for c in PhyloMatrix.regression_coefficients.keys()}
-            PhyloMatrix.regression_hits = correlated_clusters.keys()
             PhyloMatrix.correlated_clusters = pd.DataFrame.from_dict(correlated_clusters,orient='index',columns=['coeff','pvalue','association'])
             # add the regression output to the annotation matrix
             if PhyloMatrix.annotation_matrix.empty:
@@ -310,7 +309,7 @@ class PhyloMatrix(object):
         def RegressionPlot(a=0.05):
 
             seaborn.relplot(data=PhyloMatrix.correlated_clusters,x='coeff',y=-np.log(PhyloMatrix.correlated_clusters.pvalue),hue='association')
-
+            '''    
             css = """
             table
             {
@@ -379,7 +378,7 @@ class PhyloMatrix(object):
             plugins.connect(fig, tooltip2)
             """
             mpld3.save_html(fig, "regression.html")
-
+            '''
             plt.show()
 
     class Annotation(object):
