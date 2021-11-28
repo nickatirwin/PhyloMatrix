@@ -10,7 +10,7 @@ from statsmodels.multivariate.pca import PCA
 import statsmodels.api as sm
 import matplotlib.pyplot as plt
 
-import seaborn
+# import seaborn
 
 import mpld3
 from mpld3 import plugins
@@ -138,13 +138,100 @@ class PhyloMatrix(object):
             mpld3.save_html(fig, "pca.html")
             plt.show()
 
+    class ProfileTree(object):
+        def __init__(self):
+            pass
+        
+        def plotProfile(self):
+            def get_profile_layout():
+                def get_color(cmap, value):
+                    cmap = cm.get_cmap(cmap)
+                    return cmap(value)
+                def layout_fn(node):
+                    # iterate through profile
+                    profile = node.props.get('profile')
+                    #if profile:
+                    for i, value in enumerate(profile):
+                        col = rgb2hex(get_color("binary", value))
 
+                        w = 50
+                        h = 50
+
+                        f = RectFace(w, h, color=col, padding_x=1, padding_y=1)
+
+                        if node.is_leaf():
+                            node.add_face(f,  column=2+i, position="aligned")
+                        else:
+
+                            node.add_face(f,  column=2+i, position="aligned",  collapsed_only=True)
+
+                layout_fn.__name__ == "Profile Matrix"
+    
+                layout_fn.contains_aligned_face = True
+                
+                return layout_fn
+
+            def get_pheno_layout():
+                def get_color(cmap, value):
+                    cmap = cm.get_cmap(cmap)
+                    return cmap(value)
+
+                def layout_fn(node):
+                    if node.props.get('pheno'):
+                        try:
+                            i = 2 + len(node.props.get('profile'))
+                        except:
+                            i = 2
+                        col = rgb2hex(get_color("Reds", node.props.get('pheno') * 256))
+                        f = RectFace(50, 50, color=col, padding_x=10, padding_y=1)
+
+                    if node.is_leaf():
+                        node.add_face(f,  column=i, position="aligned")
+                    else:
+                        node.add_face(f,  column=i, position="aligned",  collapsed_only=True)
+
+                layout_fn.__name__ = 'Phenotype'
+                layout_fn.contains_aligned_face = True
+                return layout_fn
+
+
+            ncbi = NCBITaxa()
+            species = matrix.index
+
+            t = ncbi.get_topology(taxids)
+            t.convert_to_ultrametric()
+
+            # Annotate tree
+            for node in t.traverse():
+                if node.is_leaf():
+                    node.add_prop("profile", list(PhyloMatrix.matrix.loc[node.name]))
+                    # treating phenotype as number for now
+                    node.add_prop("pheno", int(PhyloMatrix.y.loc[node.name]))
+                    
+            else:
+                node.add_prop("profile", list(PhyloMatrix.matrix.loc[node.get_leaf_names()].mean(axis=0)))
+                node.add_prop("pheno", float(PhyloMatrix.y.loc[node.get_leaf_names()].mean()))
+            
+            ts = TreeStyle()
+            ts.show_branch_length = False
+            ts.show_branch_support = False
+            ts.show_leaf_name = False
+
+            # NEW: dd layouts accessible from front end
+            profile_layout = get_profile_layout()
+            profile_layout.__name__ = 'Profile Matrix'
+            
+            ts.layout_fn = [profile_layout, get_pheno_layout]
+            
+            t.explore(tree_name="test", tree_style=ts)
+
+
+
+            
     class Regression(object):
         def __init__(self):
             pass
 
-
-        
         def DependentVariable(dv=None,delim='\t',header=False):
             if not dv:
                 raise ValueError('Provide a dependent variable file')
