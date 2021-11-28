@@ -9,6 +9,8 @@ import numpy as np
 from statsmodels.multivariate.pca import PCA
 import statsmodels.api as sm
 import matplotlib.pyplot as plt
+import mpld3
+from mpld3 import plugins
 from collections import Counter
 from sklearn.preprocessing import StandardScaler
 
@@ -113,7 +115,9 @@ class PhyloMatrix(object):
             ax.legend(groups)
             ax.grid()    
             # plot
+            mpld3.save_html(fig, "pca.html")
             plt.show()
+
         
         def DependentVariable(dv=None,delim='\t',header=False):
             if not dv:
@@ -188,15 +192,74 @@ class PhyloMatrix(object):
 
         # plot results
         def RegressionPlot(a=0.05):
+            css = """
+            table
+            {
+            border-collapse: collapse;
+            }
+            th
+            {
+            color: #ffffff;
+            background-color: #000000;
+            }
+            td
+            {
+            background-color: #cccccc;
+            }
+            table, th, td
+            {
+            font-family:Arial, Helvetica, sans-serif;
+            border: 1px solid black;
+            text-align: right;
+            }
+            """
+            
             a = a/len(PhyloMatrix.matrix.columns)
-            unsig_p = [PhyloMatrix.regression_pvalues[p] for p in PhyloMatrix.regression_pvalues if PhyloMatrix.regression_pvalues[p] > a]
-            unsig_c = [PhyloMatrix.regression_coefficients[p] for p in PhyloMatrix.regression_pvalues if PhyloMatrix.regression_pvalues[p] > a]
-            sig_p = [PhyloMatrix.regression_pvalues[p] for p in PhyloMatrix.regression_pvalues if PhyloMatrix.regression_pvalues[p] < a]
-            sig_c = [PhyloMatrix.regression_coefficients[p] for p in PhyloMatrix.regression_pvalues if PhyloMatrix.regression_pvalues[p] < a]
-            plt.scatter(y=-1*(np.log10(unsig_p)),x=unsig_c,alpha=0.5)
-            plt.scatter(y=-1*(np.log10(sig_p)),x=sig_c,alpha=0.5)
+            unsig_p = [PhyloMatrix.regression_pvalues[p] \
+                       for p in PhyloMatrix.regression_pvalues \
+                       if PhyloMatrix.regression_pvalues[p] > a]
+            unsig_c = [PhyloMatrix.regression_coefficients[p] \
+                       for p in PhyloMatrix.regression_pvalues \
+                       if PhyloMatrix.regression_pvalues[p] > a]
+            sig_p = [PhyloMatrix.regression_pvalues[p] \
+                     for p in PhyloMatrix.regression_pvalues \
+                     if PhyloMatrix.regression_pvalues[p] < a]
+            sig_c = [PhyloMatrix.regression_coefficients[p] \
+                     for p in PhyloMatrix.regression_pvalues \
+                     if PhyloMatrix.regression_pvalues[p] < a]
+
+
+            fig = plt.figure(figsize = (8,8))
+            
+            x = unsig_c
+            y = -1*(np.log10(unsig_p))            
+            points1 = plt.scatter(y=x,x=y,alpha=0.5)
+            labels1 = len(x) * ['test']
+
+            x = sig_c
+            y = -1*(np.log10(sig_p))
+            points2 = plt.scatter(y=y,x=x,alpha=0.5)
+            labels2 = len(x) * ['test']
             plt.ylabel('-Log10(p value)')
-            plt.xlabel('Coefficient')
+            plt.xlabel('Coefficient')            
+
+            """
+            tooltip1 = plugins.PointHTMLTooltip(points1[0],
+                                                labels,
+                                                voffset=10,
+                                                hoffset=10,
+                                                css=css)
+
+            tooltip2 = plugins.PointHTMLTooltip(points2[0],
+                                                labels,
+                                                voffset=10,
+                                                hoffset=10,
+                                                css=css)
+            
+            plugins.connect(fig, tooltip1)
+            plugins.connect(fig, tooltip2)
+            """
+            mpld3.save_html(fig, "regression.html")
             plt.show()
 
     class Annotation(object):
