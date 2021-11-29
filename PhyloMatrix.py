@@ -34,7 +34,7 @@ class PhyloMatrix(object):
         PhyloMatrix.annotation_matrix = pd.DataFrame()
     
     # MATRIX PARSER
-    def LoadMatrix(self, type='table', file=None, header=0, sep='\t'):
+    def LoadMatrix(self, file=None, type='table', header=0, sep='\t'):
         '''Load a matrix from clusters'''
         # check for input file
         if file:
@@ -58,7 +58,7 @@ class PhyloMatrix(object):
                 for t in counts:
                     taxa_d[t][m] = counts[t] 
                 m += 1
-            PhyloMatrix.matrix = pd.DataFrame.from_dict(taxa_d, index=['C'+(6-len(str(x)))*'0'+str(x) for x in range(1,n+1)],orient='index')   
+            PhyloMatrix.matrix = pd.DataFrame.from_dict(taxa_d, columns=['C'+(6-len(str(x)))*'0'+str(x) for x in range(1,n+1)],orient='index')   
         
         elif type.lower() == 'eggnog': # load in eggnog family members
             # record all taxa
@@ -381,21 +381,22 @@ class PhyloMatrix(object):
             '''
             plt.show()
 
-    class Annotation(object):
-        def __init__(self):
-            pass
-        def LoadAnnotations(file=None):
-            annot = open(file,'r').readlines()
-            a_d = {a.split('\t')[0]:a.strip().split('\t')[1:] for a in annot[1:]}
-            PhyloMatrix.annotation_matrix = pd.DataFrame.from_dict(a_d,orient='index',columns=annot[0].strip().split('\t'))
-        def Subsample(targets=None,features=None):
-            '''provide a list of targets and a list of features - search for the targets in each feature'''
-            if type(targets) == str: targets = [targets]
-            if type(features) == str: features = [features]
-            clusters = []
-            for feature in features:
-                clusters.append(PhyloMatrix.annotation_matrix.loc[PhyloMatrix.annotation_matrix[feature].isin(targets)].index.to_list())
-            clusters = set.intersection(*map(set,clusters))
-            PhyloMatrix.extracted_annotations = PhyloMatrix.annotation_matrix.loc[clusters,:] # Just for testing
-            PhyloMatrix.extract = PhyloMatrix.matrix.loc[:,clusters]
+    def LoadAnnotations(self, file=None, sep='\t', header=True):
+        annot = open(file,'r').readlines()
+        if header == True:
+            a_d = {a.split(sep)[0]:a.strip().split('\t')[1:] for a in annot[1:]}
+        else:
+            a_d = {a.split(sep)[0]:a.strip().split('\t')[1:] for a in annot}
+        PhyloMatrix.annotation_matrix = pd.DataFrame.from_dict(a_d,orient='index',columns=annot[0].strip().split('\t'))
+    
+    def Subsample(self, targets=None,features=None):
+        '''provide a list of targets and a list of features - search for the targets in each feature'''
+        if type(targets) == str: targets = [targets]
+        if type(features) == str: features = [features]
+        clusters = []
+        for feature in features:
+            clusters.append(PhyloMatrix.annotation_matrix.loc[PhyloMatrix.annotation_matrix[feature].isin(targets)].index.to_list())
+        clusters = set.intersection(*map(set,clusters))
+        PhyloMatrix.extracted_annotations = PhyloMatrix.annotation_matrix.loc[clusters,:] # Just for testing
+        PhyloMatrix.extract = PhyloMatrix.matrix.loc[:,clusters]
 
