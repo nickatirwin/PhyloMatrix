@@ -10,7 +10,7 @@ from statsmodels.multivariate.pca import PCA
 import statsmodels.api as sm
 import matplotlib.pyplot as plt
 
-# import seaborn
+import seaborn
 
 import mpld3
 from mpld3 import plugins
@@ -34,8 +34,25 @@ class PhyloMatrix(object):
         PhyloMatrix.annotation_matrix = pd.DataFrame()
     
     # MATRIX PARSER
-    def LoadMatrix(self, file=None, type='table', header=0, sep='\t'):
+    def LoadMatrix(self, file=None, type='table', min_taxa=1, header=0, sep='\t'):
         '''Load a matrix from clusters'''
+
+        def Minimum_taxa(d,families=None,min_taxa=min_taxa):    
+            # filter clusters with not enough taxa
+            exclude = []
+            for m in range(0,len(d[next(iter(d))])):
+                taxa = 0
+                for t in d:
+                    if d[t][m] > 0:
+                        taxa += 1
+                if taxa < min_taxa:
+                    exclude.append(m)
+            for t in d:
+                d[t] = list(np.delete(np.array(d[t]),exclude))
+            if families:
+                families = list(np.delete(np.array(families),exclude))
+            return d,families
+
         # check for input file
         if file:
             try:
@@ -58,6 +75,7 @@ class PhyloMatrix(object):
                 for t in counts:
                     taxa_d[t][m] = counts[t] 
                 m += 1
+            taxa_d = Minimum_taxa(taxa_d,min_taxa=min_taxa)
             PhyloMatrix.matrix = pd.DataFrame.from_dict(taxa_d, columns=['C'+(6-len(str(x)))*'0'+str(x) for x in range(1,n+1)],orient='index')   
         
         elif type.lower() == 'eggnog': # load in eggnog family members
@@ -77,6 +95,7 @@ class PhyloMatrix(object):
                     taxa_d[t][m] = counts[t]
                 family.append(l.split('\t')[1])
                 m += 1
+            taxa_d,family = Minimum_taxa(taxa_d,families=family,min_taxa=min_taxa)
             PhyloMatrix.matrix = pd.DataFrame.from_dict(taxa_d, columns=family,orient='index')  
 
         elif type.lower() == 'table': # load in table as a matrix
@@ -86,14 +105,6 @@ class PhyloMatrix(object):
             if header != 0:
                 PhyloMatrix.matrix.columns = ['C'+(6-len(str(x)))*'0'+str(x) for x in range(1,len(PhyloMatrix.cluster_file.split('\n')[:-1])+1)]
 
-    # CLUSTER SELECTION
-    def Minimum_taxa(self,min_taxa=None):    
-        # filter clusters with not enough taxa
-        exclude = []
-        for c in PhyloMatrix.matrix.columns:
-            if np.count_nonzero(PhyloMatrix.matrix[c]) < min_taxa: exclude.append(c)
-        PhyloMatrix.matrix = PhyloMatrix.matrix.drop(exclude, axis=1)
-
     class PCA(object):
         def __init__(self, binary=True, standardize=True, method='eig', normalize=True):
             "Calculate a PCA using the gene matrix"
@@ -102,8 +113,12 @@ class PhyloMatrix(object):
                 pca_matrix = pd.DataFrame(np.where(PhyloMatrix.matrix > 1, 1, 0),columns=PhyloMatrix.matrix.columns, index=PhyloMatrix.matrix.index).transpose()
             else:
                 pca_matrix = PhyloMatrix.matrix.transpose()       
-            # run the pca
-            PhyloMatrix.pca = PCA(pca_matrix,standardize=standardize, method=method, normalize=normalize)
+            # run the pca - max 100 components
+            if len(pca_matrix.columns) > 100:
+                n = 100
+            else:
+                n = len(pca_matrix.columns)
+            PhyloMatrix.pca = PCA(pca_matrix,standardize=standardize, method=method, normalize=normalize, ncomp=n)
             PhyloMatrix.pca.values = PhyloMatrix.pca.coeff.transpose()
 
         def plot(PCx='PC1',PCy='PC2',annotate=False):
@@ -135,8 +150,9 @@ class PhyloMatrix(object):
             ax.legend(groups)
             ax.grid()    
             # plot
-            mpld3.save_html(fig, "pca.html")
+            #mpld3.save_html(fig, "pca.html")
             plt.show()
+
 
     class ProfileTree(object):
         def __init__(self):
@@ -389,14 +405,15 @@ class PhyloMatrix(object):
             a_d = {a.split(sep)[0]:a.strip().split('\t')[1:] for a in annot}
         PhyloMatrix.annotation_matrix = pd.DataFrame.from_dict(a_d,orient='index',columns=annot[0].strip().split('\t'))
     
-    def Subsample(self, targets=None,features=None):
+    def Subset(self, targets=None,features=None):
         '''provide a list of targets and a list of features - search for the targets in each feature'''
         if type(targets) == str: targets = [targets]
         if type(features) == str: features = [features]
+        sub = dict(zip(features,targets))
         clusters = []
-        for feature in features:
-            clusters.append(PhyloMatrix.annotation_matrix.loc[PhyloMatrix.annotation_matrix[feature].isin(targets)].index.to_list())
+        for s in sub:
+            clusters.append(PhyloMatrix.annotation_matrix.loc[PhyloMatrix.annotation_matrix[s].isin([sub[s]])].index.to_list())
         clusters = set.intersection(*map(set,clusters))
         PhyloMatrix.extracted_annotations = PhyloMatrix.annotation_matrix.loc[clusters,:] # Just for testing
-        PhyloMatrix.extract = PhyloMatrix.matrix.loc[:,clusters]
+        return PhyloMatrix.matrix.loc[:,clusters]
 
